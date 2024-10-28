@@ -90,7 +90,7 @@ void B_LedControllerTask(void* pvParameters)
 					break;
 				
 				// Update color if state is in progress
-				uint16_t totalTransitionTime = __htons(*((uint16_t*)(&commandBuffer.data[3])));
+				uint16_t totalTransitionTime = 0;
 				B_color_t* desiredColor = (B_color_t*)(&commandBuffer.data[0]);
 				B_color_t lerpedColor;
 				B_ColorLerp(&commandExecution.previousColor, desiredColor, (float)commandExecution.timer / (float)totalTransitionTime, &lerpedColor);

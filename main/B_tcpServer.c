@@ -37,6 +37,9 @@ static void B_HandleTCPMessage(const int sock, QueueHandle_t* commandQueuePtr)
 		}
 
 		ESP_LOGI(tcpTag, "Inserted command to queue");
+
+		// DEBUG
+		write(sock, "Thanks", 7);
 	}
 }
 

@@ -9,9 +9,12 @@
 #include <nvs_flash.h>
 
 #include "B_wifi.h"
+#include "B_time.h"
 #include "B_tcpServer.h"
 #include "B_LedController.h"
 #include "B_lightCommandStruct.h"
+
+#define B_BUILTIN_LED 2
 
 static const char *tag = "BarnaNet";
 
@@ -28,6 +31,11 @@ void app_main()
 	}
 	ESP_ERROR_CHECK(flashReturn);
 
+	// DEBUG Light
+	gpio_reset_pin(B_BUILTIN_LED);
+	ESP_ERROR_CHECK(gpio_set_direction(B_BUILTIN_LED, GPIO_MODE_DEF_OUTPUT));
+	ESP_LOGI(ledControllerTag, "GPIO is on for pin: %i", B_BUILTIN_LED);
+
 	// Connect to WIFI
 	if (B_WifiConnect() != B_WIFI_OK)
 	{
@@ -35,6 +43,20 @@ void app_main()
 		return;
 	}
 
+	// DEBUG
+	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
+
+	// NTP
+	B_SyncTime();
+
+	time_t now = 0;
+	struct tm timeinfo = { 0 };
+	char timeBuffer[64];
+	time(&now);
+	localtime_r(&now, &timeinfo);
+	strftime(timeBuffer, sizeof(timeBuffer), "%Y. %m. %d. - %X", &timeinfo);
+	ESP_LOGI(tag, "New time: %s", timeBuffer);
+	
 	// Cretate command queue for maximum 10 commands
 	commandQueue = xQueueCreate(10, sizeof(B_command_t));
 	if (commandQueue == NULL)
@@ -51,4 +73,6 @@ void app_main()
 	// Create TCP server task
 	xTaskCreate(B_ListenTCPServer, "balaTCPListen", 4096, &commandQueue, 3, NULL);
 	xTaskCreate(B_LedControllerTask, "balaLedController", 2048, &commandQueue, 3, NULL);
+
+	B_DeinitSntp();
 }
