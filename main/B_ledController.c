@@ -1,13 +1,6 @@
 #include "B_ledController.h"
 
-void B_ColorLerp(B_color_t* c1, B_color_t* c2, float t, B_color_t* out)
-{
-	if (t > 1)
-		t = 1;
-	out->red = c1->red + t * (c2->red - c1->red);
-	out->green = c1->green + t * (c2->green - c1->green);
-	out->blue = c1->blue + t * (c2->blue - c1->blue);
-}
+static const char* ledControllerTag = "BarnaNet - LedController";
 
 void B_SetUpPwmChanels()
 {
@@ -67,30 +60,29 @@ void B_LedControllerTask(void* pvParameters)
 {
 	B_SetUpPwmChanels();
 	
-	QueueHandle_t* commandQueuePtr = (QueueHandle_t*)pvParameters;
+	//QueueHandle_t* commandQueuePtr = (QueueHandle_t*)pvParameters;
 
 	B_command_t commandBuffer = {0};
-	B_commandExecution_t commandExecution = {0}; 
+	B_commandExecution_t commandExecution = {0};
 	while (true)
 	{
 		// Get new command from command queue if there is one
-		if (xQueueReceive(*commandQueuePtr, &commandBuffer, 0) == pdPASS)
-		{
-			commandExecution.state = LED_STATE_INPROGRESS;
-			commandExecution.timer = 0;
-		};
+		// if (xQueueReceive(*commandQueuePtr, &commandBuffer, 0) == pdPASS)
+		// {
+		// 	commandExecution.state = LED_STATE_INPROGRESS;
+		// 	commandExecution.timer = 0;
+		// };
 
 		// Handle the command based on its ID
-		int commandId = commandBuffer.header & 0b00111111;
-		switch (commandId)
+		switch (commandBuffer.commandID)
 		{
-			case B_CHANGECOLOR_COMMAND:
+			case B_COMMAND_SETCOLOR:
 			{
 				if (commandExecution.state != LED_STATE_INPROGRESS)
 					break;
 				
 				// Update color if state is in progress
-				uint16_t totalTransitionTime = 0;
+				int totalTransitionTime = htons(*((uint16_t*)(&commandBuffer.data[3])));
 				B_color_t* desiredColor = (B_color_t*)(&commandBuffer.data[0]);
 				B_color_t lerpedColor;
 				B_ColorLerp(&commandExecution.previousColor, desiredColor, (float)commandExecution.timer / (float)totalTransitionTime, &lerpedColor);
@@ -114,6 +106,9 @@ void B_LedControllerTask(void* pvParameters)
 
 		vTaskDelay((1000 / LED_UPDATE_HZ) / portTICK_PERIOD_MS);
 	}
+
+	// Task paniced, clean up and delete task
+	vTaskDelete(NULL);
 }
 
 void B_SetUpGpioPin(gpio_num_t pin)

@@ -1,6 +1,3 @@
-// Handles NTP sync and timer alarms
-// Alarms: https://docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/peripherals/timer.html#_CPPv415timer_set_alarm13timer_group_t11timer_idx_t13timer_alarm_t
-
 #pragma once
 
 #include <freertos/FreeRTOS.h>
@@ -17,12 +14,16 @@
 #include <nvs_flash.h>
 
 #include <sys/time.h>
+#include <driver/gptimer.h>
 
 #include <lwip/err.h>
 #include <lwip/sockets.h>
 #include <lwip/sys.h>
 #include <lwip/netdb.h>
 #include <lwip/dns.h>
+
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 // Set timezone https://developer.ibm.com/articles/au-aix-posix/
 // Timezone:	CET (DST off)
@@ -33,10 +34,26 @@
 // (assuming 5 sundays in a month)
 
 #define B_TIMEZONE "CET-1CEST,M3.5.0/2:00:00,M10.5.0/3:00:00"
+#define B_LATITUDE (47.896076) // 0.8359r - 47.896076°
+#define B_LONGITUDE (20.380324) // 0.3557r - 20.380324°
+#define B_ELEVATION 0
+
 #define B_SNTP_MAX_RETRY 15
 #define B_SNTP_TIMEOUT_MS 2000
 
-static const char* timeTag = "BarnaNet - TIME";
-
 void B_SyncTime();
 void B_DeinitSntp();
+
+void B_PrintLocalTime();
+
+// MISC
+bool B_IsLeapYear(int year);
+time_t B_JulianToTimestamp(double julian);
+double B_TimestampToJulian(time_t timestamp);
+double B_Radians(double degrees);
+double B_Degrees(double radians);
+
+// Get sunset and sunrise for given timestamp (the output are in UTC)
+// Reference: https://gml.noaa.gov/grad/solcalc/table.php?lat=47.896095&lon=20.380313&year=2024
+// https://en.wikipedia.org/wiki/Sunrise_equation#Complete_calculation_on_Earth
+void B_CalculateSunSetRise(time_t timestamp, time_t* sunriseOut, time_t* sunsetOut);

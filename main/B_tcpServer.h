@@ -16,18 +16,22 @@
 #include <lwip/dns.h>
 
 #include "B_SECRET.h"
-#include "B_lightCommandStruct.h"
+#include "B_protocolCommands.h"
 
-static const char* tcpTag = "BarnaNet - TCP";
-
-static int tcpSock = 0;
-
-// Reads the message and transmits a response
-static void B_HandleTCPMessage(const int sock, QueueHandle_t* commandQueuePtr);
-static void B_TCPSendMessage(int sock, char* data, size_t size);
-
+// B_InitTCPServer()
 // Inits the TCP server
-bool B_StartTCPServer();
+// Returns the server socket, but returns 0 if fails
+// - Private function
+// - !Runs in the TCP task
 
-// Creates a TCP server and listens for messages (possibly used in a separate task)
-void B_ListenTCPServer(void* pvParameters);
+// B_TCPSendMessage
+// Send message to sock
+// Arguments: (int sock, const char *const sendBuffer, size_t bufferSize)
+// - Private function
+// - !Runs in the TCP task
+
+// Listens for TCP messages
+// - Blocking function
+// - !Runs in the TCP task
+// - Expected function pointer: void (*handlerFunctionPointer)(const char* const messageBuffer, int messageLen, char* const responseBufferOut, int* const responseLenOut)
+void B_TCPTask(void* pvParameters);

@@ -9,26 +9,24 @@
 #include <esp_event.h>
 #include <esp_log.h>
 
+#include <lwip/sockets.h>
+
 #include <driver/gpio.h> // Basic GPIO control
 #include <driver/ledc.h> // PWM control
 
 #include "B_SECRET.h"
-#include "B_lightCommandStruct.h"
+#include "B_protocolCommands.h"
+#include "B_colorUtil.h"
+
+// -- FUNCTIONS -- //
+#define NO_FUNCTION 0
+#define RAINBOW_FUNCTION 1
 
 #define LED_UPDATE_HZ 40
 
 #define LED_STATE_FINISHED 0
 #define LED_STATE_INPROGRESS 1
 //#define LED_STATE_TRANSITION 2
-
-static const char* ledControllerTag = "BarnaNet - LedController";
-
-typedef struct {
-	uint8_t red, green, blue;
-} B_color_t;
-
-// Linear Interpolate between colors
-void B_ColorLerp(B_color_t* a, B_color_t* b, float t, B_color_t* out);
 
 typedef struct {
 	uint8_t state;
@@ -39,7 +37,8 @@ typedef struct {
 void B_SetUpPwmChanels();
 void B_SetPWMColor(B_color_t* color);
 
-// The function registered as a task that handles the messages from the TCP server
+// Updates the leds based on the global state
+// - !Runs in the LED Task
 void B_LedControllerTask(void* pvParameters);
 
 // GPIO

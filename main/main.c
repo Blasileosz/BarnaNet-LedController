@@ -12,20 +12,86 @@
 #include "B_time.h"
 #include "B_tcpServer.h"
 #include "B_LedController.h"
-#include "B_lightCommandStruct.h"
+#include "B_protocolCommands.h"
+#include "B_globalState.h"
 
 #define B_BUILTIN_LED 2
 
 static const char *tag = "BarnaNet";
 
-QueueHandle_t commandQueue;
+B_globalState_t globalState = { 0 };
+SemaphoreHandle_t stateMutex;
+
+// Respond or consume the commands sent via TCP
+// - !Runs in the TCP task
+static void B_HandleTCPMessage(const char* const messageBuffer, int messageLen, char* const responseBufferOut, int* const responseLenOut)
+{
+	if (messageLen > B_COMMAND_MAX_LEN) {
+		ESP_LOGE(tag, "Received invalid command");
+		responseBufferOut[0] = B_ERROR_COMMAND_MASK;
+		*responseLenOut = 1;
+		return;
+	}
+
+	const B_command_t* const command = (const B_command_t* const)messageBuffer;
+	switch (command->commandID) {
+		case B_COMMAND_SETCOLOR:
+			{
+				// TODO: Could create a command struct specifically for color and function
+				xSemaphoreTake(stateMutex, portMAX_DELAY);
+
+				globalState.isOn = true;
+				globalState.color.red = command->data[0];
+				globalState.color.green = command->data[1];
+				globalState.color.blue = command->data[2];
+				globalState.functionID = 0;
+				globalState.functionSpeed = htonl(*((uint16_t*)(&command->data[3])));
+
+				xSemaphoreGive(stateMutex);
+				return;
+			}
+
+			case B_COMMAND_SETFUNCTION:
+			{
+				xSemaphoreTake(stateMutex, portMAX_DELAY);
+
+				globalState.isOn = true;
+				globalState.functionID = command->data[0];
+				globalState.functionSpeed = htonl(*((uint16_t*)(&command->data[1])));
+
+				xSemaphoreGive(stateMutex);
+				return;
+			}
+
+			case B_COMMAND_GETCOLOR:
+			{
+				xSemaphoreTake(stateMutex, portMAX_DELAY);
+
+				// TODO: Could construct a command_t and memcopy it into the response
+
+				responseBufferOut[0] = B_COMMAND_RESPONDCOLOR;
+				responseBufferOut[1] = 0;
+				responseBufferOut[2] = globalState.color.red;
+				responseBufferOut[3] = globalState.color.green;
+				responseBufferOut[4] = globalState.color.blue;
+				*responseLenOut = 5;
+
+				xSemaphoreGive(stateMutex);
+				return;
+			}
+
+		default:
+			break;
+	}
+}
 
 void app_main()
 {
+	static_assert(sizeof(B_command_t) == B_COMMAND_MAX_LEN);
+
 	// Init NVS
 	esp_err_t flashReturn = nvs_flash_init();
-	if (flashReturn == ESP_ERR_NVS_NO_FREE_PAGES || flashReturn == ESP_ERR_NVS_NEW_VERSION_FOUND)
-	{
+	if (flashReturn == ESP_ERR_NVS_NO_FREE_PAGES || flashReturn == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 		ESP_ERROR_CHECK(nvs_flash_erase());
 		flashReturn = nvs_flash_init();
 	}
@@ -34,11 +100,10 @@ void app_main()
 	// DEBUG Light
 	gpio_reset_pin(B_BUILTIN_LED);
 	ESP_ERROR_CHECK(gpio_set_direction(B_BUILTIN_LED, GPIO_MODE_DEF_OUTPUT));
-	ESP_LOGI(ledControllerTag, "GPIO is on for pin: %i", B_BUILTIN_LED);
+	ESP_LOGI(tag, "GPIO is on for pin: %i", B_BUILTIN_LED);
 
 	// Connect to WIFI
-	if (B_WifiConnect() != B_WIFI_OK)
-	{
+	if (B_WifiConnect() != B_WIFI_OK) {
 		ESP_LOGE(tag, "Wifi failed");
 		return;
 	}
@@ -48,31 +113,17 @@ void app_main()
 
 	// NTP
 	B_SyncTime();
+	B_PrintLocalTime();
 
-	time_t now = 0;
-	struct tm timeinfo = { 0 };
-	char timeBuffer[64];
-	time(&now);
-	localtime_r(&now, &timeinfo);
-	strftime(timeBuffer, sizeof(timeBuffer), "%Y. %m. %d. - %X", &timeinfo);
-	ESP_LOGI(tag, "New time: %s", timeBuffer);
-	
-	// Cretate command queue for maximum 10 commands
-	commandQueue = xQueueCreate(10, sizeof(B_command_t));
-	if (commandQueue == NULL)
-	{
-		ESP_LOGE(tag, "Command Queue could not be created");
+	// Create mutex for locking globalState
+	stateMutex = xSemaphoreCreateMutex();
+	if (stateMutex == NULL) {
+		ESP_LOGE(tag, "Failed to create mutex");
 		return;
 	}
 
-	if (!B_StartTCPServer()) {
-		ESP_LOGE(tag, "TCP server failed");
-		return;
-	}
+	xTaskCreate(B_TCPTask, "B_TCPTask", 4096, &B_HandleTCPMessage, 3, NULL);
+	//xTaskCreate(&B_LedControllerTask, "B_LedControllerTask", 2048, &stateMutex, 3, NULL);
 
-	// Create TCP server task
-	xTaskCreate(B_ListenTCPServer, "balaTCPListen", 4096, &commandQueue, 3, NULL);
-	xTaskCreate(B_LedControllerTask, "balaLedController", 2048, &commandQueue, 3, NULL);
-
-	B_DeinitSntp();
+	//B_DeinitSntp();
 }

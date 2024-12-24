@@ -1,5 +1,10 @@
 #include "B_wifi.h"
 
+static const char* wifiTag = "BarnaNet - WIFI";
+
+static EventGroupHandle_t wifiEventGroup = 0;
+static unsigned int connectionRetryCount = 0;
+
 static void B_WifiEventHandler(void* args, esp_event_base_t eventBase, int32_t eventId, void* eventData) {
 	if (eventBase == WIFI_EVENT && eventId == WIFI_EVENT_STA_START) {
 		ESP_LOGI(wifiTag, "Connecting");

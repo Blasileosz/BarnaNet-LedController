@@ -23,11 +23,13 @@
 #define B_WIFI_OK 0b1
 #define B_WIFI_FAIL 0b10
 
-static const char* wifiTag = "BarnaNet - WIFI";
-static EventGroupHandle_t wifiEventGroup = 0;
-static unsigned int connectionRetryCount = 0;
+// Handles events regarding connecting and reconnecting to the network
+// - Private function
+// static void B_WifiEventHandler();
 
-static void B_WifiEventHandler();
-static void B_IpEventHandler();
+// Handles the IP receive event
+// - Private function
+// static void B_IpEventHandler();
 
+// Connect to the WIFI network using the credentials in B_SECRET.h
 esp_err_t B_WifiConnect();
