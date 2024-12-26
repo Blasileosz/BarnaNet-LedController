@@ -12,7 +12,8 @@ static int B_InitTCPServer()
 	struct sockaddr_in dest_addr = {
 	    .sin_addr.s_addr = htonl(INADDR_ANY),
 	    .sin_family = AF_INET,
-	    .sin_port = htons(B_TCP_PORT) };
+	    .sin_port = htons(B_TCP_PORT)
+	};
 
 	// Create server socket
 	serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
@@ -28,7 +29,7 @@ static int B_InitTCPServer()
 	ESP_LOGI(tcpTag, "Socket created");
 
 	// Bind socket
-	int err = bind(serverSocket, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+	int err = bind(serverSocket, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
 	if (err != 0) {
 		ESP_LOGE(tcpTag, "Socket unable to bind: errno %d", errno);
 		ESP_LOGE(tcpTag, "IPPROTO: %d", AF_INET);
@@ -69,11 +70,11 @@ static void B_TCPSendMessage(int sock, const char *const sendBuffer, size_t buff
 void B_TCPTask(void* pvParameters)
 {
 	// Get the callback function from the task parameter
-	if (pvParameters == NULL) {
+	void (*handlerFunctionPointer)(const B_command_t* const, B_command_t* const) = pvParameters;
+	if (handlerFunctionPointer == NULL) {
 		ESP_LOGE(tcpTag, "The handler function pointer passed is invalid, aborting startup");
 		vTaskDelete(NULL);
 	}
-	void (*handlerFunctionPointer)(const char* const messageBuffer, int messageLen, char* const responseBufferOut, int* const responseLenOut) = pvParameters;
 
 	int serverSocket = B_InitTCPServer();
 	if (serverSocket == 0) {
@@ -100,7 +101,9 @@ void B_TCPTask(void* pvParameters)
 		FD_COPY(&socketSet, &readableSocketSet);
 
 		// Select all socket with readable data
-		int socketCount = select(FD_SETSIZE, &readableSocketSet, NULL, NULL, NULL); // TODO: check out poll instead of select https://www.ibm.com/docs/en/i/7.4?topic=designs-using-poll-instead-select
+		int socketCount = select(FD_SETSIZE, &readableSocketSet, NULL, NULL, NULL);
+		// TODO: check out poll instead of select https://www.ibm.com/docs/en/i/7.4?topic=designs-using-poll-instead-select
+		// Although, the ESP-IDF documentation states that poll is implemented using select as well (maybe faster than our weird solution)
 
 		// No fd_array here to select only the readableSocketSet's sockets, need to loop over all possible places to find socket with news
 		for (size_t nthSock = 0; nthSock < FD_SETSIZE; nthSock++) {
@@ -114,7 +117,7 @@ void B_TCPTask(void* pvParameters)
 				struct sockaddr_storage clientAddress; // Large enough for both IPv4 or IPv6
 				socklen_t clientAddrlen = sizeof(clientAddress);
 
-				int newSock = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientAddrlen);
+				int newSock = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddrlen);
 				if (newSock < 0) {
 					ESP_LOGE(tcpTag, "Unable to accept connection: errno %d", errno);
 					continue;
@@ -130,11 +133,11 @@ void B_TCPTask(void* pvParameters)
 
 				// Convert ip address to string
 				if (clientAddress.ss_family == PF_INET) {
-					inet_ntoa_r(((struct sockaddr_in *)&clientAddress)->sin_addr, addr_str, sizeof(addr_str) - 1);
+					inet_ntoa_r(((struct sockaddr_in*)&clientAddress)->sin_addr, addr_str, sizeof(addr_str) - 1);
 				}
 
 				if (clientAddress.ss_family == PF_INET6) {
-					inet6_ntoa_r(((struct sockaddr_in6 *)&clientAddress)->sin6_addr, addr_str, sizeof(addr_str) - 1);
+					inet6_ntoa_r(((struct sockaddr_in6*)&clientAddress)->sin6_addr, addr_str, sizeof(addr_str) - 1);
 				}
 
 				ESP_LOGI(tcpTag, "Socket (#%i) accepted ip address: %s", newSock, addr_str);
@@ -142,8 +145,8 @@ void B_TCPTask(void* pvParameters)
 			}
 
 			// New message
-			char messageBuffer[B_COMMAND_MAX_LEN] = { 0 };
-			int messageLen = recv(nthSock, messageBuffer, B_COMMAND_MAX_LEN, 0);
+			B_command_t messageBuffer = { 0 };
+			int messageLen = recv(nthSock, (void*)&messageBuffer, sizeof(B_command_t), 0);
 
 			ESP_LOGI(tcpTag, "Received %d bytes from socket #%i", messageLen, nthSock);
 
@@ -164,18 +167,13 @@ void B_TCPTask(void* pvParameters)
 			}
 
 			// Dispatch message handling
-			char responseBuffer[B_COMMAND_MAX_LEN] = { 0 };
-			int responseLen = 0;
+			B_command_t responseBuffer = { 0 };
+			handlerFunctionPointer((const B_command_t* const)&messageBuffer, &responseBuffer);
 
-			handlerFunctionPointer(messageBuffer, messageLen, responseBuffer, &responseLen);
-
-			if (responseLen > B_COMMAND_MAX_LEN) {
-				ESP_LOGE(tcpTag, "Response buffer overflow, exiting");
-				break;
-			}
-
+			// TODO: If no response was written, nothing should be sent back?
+			int responseLen = sizeof(B_command_t);
 			if (responseLen > 0) {
-				B_TCPSendMessage(nthSock, responseBuffer, responseLen);
+				B_TCPSendMessage(nthSock, (const char* const)&responseBuffer, responseLen);
 				continue;
 			}
 		}

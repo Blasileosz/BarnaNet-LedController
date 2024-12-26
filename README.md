@@ -5,11 +5,12 @@
 - [ ] NVS: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_flash.html#application-example
 - [ ] Test sunrise
 - [x] Test TCP task
-- [ ] Finish led controller task
-- [ ] Export the TCP, time, colorUtil and wifi files to a libs folder that is a github submodule https://github.blog/open-source/git/working-with-submodules/
+- [ ] Test LED renderers
+- [ ] Export the TCP, time, colorUtil, (alarm) and wifi files to a libs folder that is a github submodule https://github.blog/open-source/git/working-with-submodules/
 - [ ] Azure IoT https://github.com/espressif/esp-azure/tree/master is deprecated, see my Github stars
 - [ ] Update Readme
 - [ ] Format everything
+	- [ ] Change formating of structs to not use typedef and remove _t for clarity
 
 ## BarnaNet Protocol
 Actual definition is in [B_lightCommandStruct.h](/include/B_lightCommandStruct.h)

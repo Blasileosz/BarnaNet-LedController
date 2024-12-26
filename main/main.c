@@ -19,75 +19,63 @@
 
 static const char *tag = "BarnaNet";
 
-B_globalState_t globalState = { 0 };
-SemaphoreHandle_t stateMutex;
+QueueHandle_t tcpCommandQueue = { 0 };
+QueueHandle_t ledCommandQueue = { 0 };
 
-// Respond or consume the commands sent via TCP
+B_LedControllerTaskParameter_t ledControllerTaskParameter = { 0 };
+
+// Dispatches the commands sent via TCP
 // - !Runs in the TCP task
-static void B_HandleTCPMessage(const char* const messageBuffer, int messageLen, char* const responseBufferOut, int* const responseLenOut)
+static void B_HandleTCPMessage(const B_command_t* const command, B_command_t* const responseCommand)
 {
-	if (messageLen > B_COMMAND_MAX_LEN) {
-		ESP_LOGE(tag, "Received invalid command");
-		responseBufferOut[0] = B_ERROR_COMMAND_MASK;
-		*responseLenOut = 1;
+	static const char* tcpHandlerTag = "BarnaNet - TCP Handler";
+
+	// Sanitize request type
+	if (B_COMMAND_OP(command->header) == B_COMMAND_OP_RES || B_COMMAND_OP(command->header) == B_COMMAND_OP_ERR) {
+		ESP_LOGE(tcpHandlerTag, "Invalid request type");
+		responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
+		responseCommand->ID = command->ID;
+		responseCommand->data[0] = B_COMMAND_ERR_CLIENT;
 		return;
 	}
 
-	const B_command_t* const command = (const B_command_t* const)messageBuffer;
-	switch (command->commandID) {
-		case B_COMMAND_SETCOLOR:
-			{
-				// TODO: Could create a command struct specifically for color and function
-				xSemaphoreTake(stateMutex, portMAX_DELAY);
+	// Command for the LED controller
+	if (B_COMMAND_DEST(command->header) == B_COMMAND_DEST_LED) {
 
-				globalState.isOn = true;
-				globalState.color.red = command->data[0];
-				globalState.color.green = command->data[1];
-				globalState.color.blue = command->data[2];
-				globalState.functionID = 0;
-				globalState.functionSpeed = htonl(*((uint16_t*)(&command->data[3])));
+		// Send the command off to the led controller to process
+		if (xQueueSend(ledCommandQueue, (void* const)command, 0) != pdPASS) {
+			ESP_LOGE(tcpHandlerTag, "Command unable to be inserted into the queue");
+			responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
+			responseCommand->ID = command->ID;
+			responseCommand->data[0] = B_COMMAND_ERR_INTERNAL;
+			return;
+		}
 
-				xSemaphoreGive(stateMutex);
+		// GET command, must wait for reply
+		if (B_COMMAND_OP(command->header) == B_COMMAND_OP_GET) {
+
+			if (xQueueReceive(tcpCommandQueue, (void* const)responseCommand, portTICK_PERIOD_MS * 1000) != pdPASS) {
+				ESP_LOGE(tcpHandlerTag, "LED Controller did not reply to get request");
+				responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
+				responseCommand->ID = command->ID;
+				responseCommand->data[0] = B_COMMAND_ERR_INTERNAL;
 				return;
 			}
 
-			case B_COMMAND_SETFUNCTION:
-			{
-				xSemaphoreTake(stateMutex, portMAX_DELAY);
-
-				globalState.isOn = true;
-				globalState.functionID = command->data[0];
-				globalState.functionSpeed = htonl(*((uint16_t*)(&command->data[1])));
-
-				xSemaphoreGive(stateMutex);
-				return;
-			}
-
-			case B_COMMAND_GETCOLOR:
-			{
-				xSemaphoreTake(stateMutex, portMAX_DELAY);
-
-				// TODO: Could construct a command_t and memcopy it into the response
-
-				responseBufferOut[0] = B_COMMAND_RESPONDCOLOR;
-				responseBufferOut[1] = 0;
-				responseBufferOut[2] = globalState.color.red;
-				responseBufferOut[3] = globalState.color.green;
-				responseBufferOut[4] = globalState.color.blue;
-				*responseLenOut = 5;
-
-				xSemaphoreGive(stateMutex);
-				return;
-			}
-
-		default:
-			break;
+			// Send back to client (fill header just in case)
+			responseCommand->header = B_COMMAND_OP_RES | B_COMMAND_DEST(command->header);
+			responseCommand->ID = command->ID;
+			responseCommand->stripID = command->stripID;
+			return;
+		}
 	}
+
+	// Handle invalid DEST
 }
 
 void app_main()
 {
-	static_assert(sizeof(B_command_t) == B_COMMAND_MAX_LEN);
+	static_assert(sizeof(B_command_t) == 128);
 
 	// Init NVS
 	esp_err_t flashReturn = nvs_flash_init();
@@ -115,15 +103,21 @@ void app_main()
 	B_SyncTime();
 	B_PrintLocalTime();
 
-	// Create mutex for locking globalState
-	stateMutex = xSemaphoreCreateMutex();
-	if (stateMutex == NULL) {
-		ESP_LOGE(tag, "Failed to create mutex");
+	// Create command queues for the tcp sever and the led controller (maximum 10 commands)
+	tcpCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	if (tcpCommandQueue == NULL || ledCommandQueue == NULL) {
+		ESP_LOGE(tag, "Failed to create queues");
+		B_DeinitSntp();
 		return;
 	}
 
-	xTaskCreate(B_TCPTask, "B_TCPTask", 4096, &B_HandleTCPMessage, 3, NULL);
-	//xTaskCreate(&B_LedControllerTask, "B_LedControllerTask", 2048, &stateMutex, 3, NULL);
+	// Preapare led task parameters
+	ledControllerTaskParameter.tcpCommandQueue = &tcpCommandQueue;
+	ledControllerTaskParameter.ledCommandQueue = &ledCommandQueue;
+
+	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &B_HandleTCPMessage, 3, NULL);
+	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
 
 	//B_DeinitSntp();
 }

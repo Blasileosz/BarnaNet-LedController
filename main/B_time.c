@@ -18,6 +18,8 @@ void B_SyncTime()
 		ESP_LOGI(timeTag, "Waiting for system time to be set... (%i/%i)", retry, B_SNTP_MAX_RETRY);
 	}
 
+	// TODO: return false if time sync fails to reboot
+
 	// Set system timezone
 	setenv("TZ", B_TIMEZONE, true);
 	tzset();

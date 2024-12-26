@@ -17,3 +17,5 @@ typedef struct {
 
 // Linear Interpolate between colors
 void B_ColorLerp(B_color_t* a, B_color_t* b, float t, B_color_t* out);
+
+B_color_t B_HSLtoRGB(float hue, float saturation, float lightness);
