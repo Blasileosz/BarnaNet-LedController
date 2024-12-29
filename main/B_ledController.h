@@ -15,8 +15,12 @@
 #include <driver/ledc.h> // PWM control
 
 #include "B_SECRET.h"
-#include "B_protocolCommands.h"
+#include "B_BarnaNetCommand.h"
 #include "B_colorUtil.h"
+
+static_assert(CONFIG_B_RED_PIN != CONFIG_B_GREEN_PIN);
+static_assert(CONFIG_B_RED_PIN != CONFIG_B_BLUE_PIN);
+static_assert(CONFIG_B_GREEN_PIN != CONFIG_B_BLUE_PIN);
 
 #define B_LED_UPDATE_HZ 40
 
@@ -97,10 +101,10 @@ struct B_ledState {
 // - Private function
 // - !Runs in the LED task
 
-typedef struct {
+struct B_LedControllerTaskParameter{
 	QueueHandle_t* tcpCommandQueue;
 	QueueHandle_t* ledCommandQueue;
-} B_LedControllerTaskParameter_t;
+};
 
 // Updates the leds
 // - !Runs in the LED Task

@@ -31,7 +31,7 @@ static void B_SetUpPwmChanels()
 		.channel = LEDC_CHANNEL_0,
 		.timer_sel = LEDC_TIMER_0,
 		.intr_type = LEDC_INTR_DISABLE,
-		.gpio_num = RED_PIN,
+		.gpio_num = CONFIG_B_RED_PIN,
 		.duty = 0,
 		.hpoint = 0
 	};
@@ -42,7 +42,7 @@ static void B_SetUpPwmChanels()
 		.channel = LEDC_CHANNEL_1,
 		.timer_sel = LEDC_TIMER_0,
 		.intr_type = LEDC_INTR_DISABLE,
-		.gpio_num = GREEN_PIN,
+		.gpio_num = CONFIG_B_GREEN_PIN,
 		.duty = 0,
 		.hpoint = 0
 	};
@@ -53,7 +53,7 @@ static void B_SetUpPwmChanels()
 		.channel = LEDC_CHANNEL_2,
 		.timer_sel = LEDC_TIMER_0,
 		.intr_type = LEDC_INTR_DISABLE,
-		.gpio_num = BLUE_PIN,
+		.gpio_num = CONFIG_B_BLUE_PIN,
 		.duty = 0,
 		.hpoint = 0
 	};
@@ -129,7 +129,7 @@ static TickType_t B_RainbowFunction2Renderer()
 
 void B_LedControllerTask(void* pvParameters)
 {
-	const B_LedControllerTaskParameter_t* const queues = (const B_LedControllerTaskParameter_t* const)pvParameters;
+	const struct B_LedControllerTaskParameter* const queues = (const struct B_LedControllerTaskParameter* const)pvParameters;
 	if (queues == NULL || queues->tcpCommandQueue == NULL || queues->ledCommandQueue == NULL) {
 		ESP_LOGE(ledControllerTag, "Led Controller task parameter invalid, aborting startup");
 		vTaskDelete(NULL);
@@ -243,15 +243,15 @@ void B_SetGpioMode(gpio_num_t pin, bool mode)
 
 void B_GPIORotateColorExample()
 {
-	B_SetUpGpioPin(RED_PIN);
-	B_SetUpGpioPin(GREEN_PIN);
-	B_SetUpGpioPin(BLUE_PIN);
+	B_SetUpGpioPin(CONFIG_B_RED_PIN);
+	B_SetUpGpioPin(CONFIG_B_GREEN_PIN);
+	B_SetUpGpioPin(CONFIG_B_BLUE_PIN);
 
 	int counter = 0;
 	while (true) {
-		B_SetGpioMode(RED_PIN, counter == 0);
-		B_SetGpioMode(GREEN_PIN, counter == 1);
-		B_SetGpioMode(BLUE_PIN, counter == 2);
+		B_SetGpioMode(CONFIG_B_RED_PIN, counter == 0);
+		B_SetGpioMode(CONFIG_B_GREEN_PIN, counter == 1);
+		B_SetGpioMode(CONFIG_B_BLUE_PIN, counter == 2);
 		counter = (counter + 1) % 3;
 
 		ESP_LOGI(ledControllerTag, "PING %i", counter);

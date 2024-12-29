@@ -2,4 +2,4 @@ build
 
 .vscode/settings.json
 
-main/B_SECRET.h
+B_SECRET.h

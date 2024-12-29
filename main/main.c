@@ -11,9 +11,10 @@
 #include "B_wifi.h"
 #include "B_time.h"
 #include "B_tcpServer.h"
-#include "B_LedController.h"
-#include "B_protocolCommands.h"
-#include "B_globalState.h"
+#include "B_ledController.h"
+#include "B_BarnaNetCommand.h"
+
+#include "B_LedControllerCommand.h"
 
 #define B_BUILTIN_LED 2
 
@@ -22,7 +23,7 @@ static const char *tag = "BarnaNet";
 QueueHandle_t tcpCommandQueue = { 0 };
 QueueHandle_t ledCommandQueue = { 0 };
 
-B_LedControllerTaskParameter_t ledControllerTaskParameter = { 0 };
+struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
 
 // Dispatches the commands sent via TCP
 // - !Runs in the TCP task
@@ -75,8 +76,6 @@ static void B_HandleTCPMessage(const B_command_t* const command, B_command_t* co
 
 void app_main()
 {
-	static_assert(sizeof(B_command_t) == 128);
-
 	// Init NVS
 	esp_err_t flashReturn = nvs_flash_init();
 	if (flashReturn == ESP_ERR_NVS_NO_FREE_PAGES || flashReturn == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -85,7 +84,7 @@ void app_main()
 	}
 	ESP_ERROR_CHECK(flashReturn);
 
-	// DEBUG Light
+	// Set up status light
 	gpio_reset_pin(B_BUILTIN_LED);
 	ESP_ERROR_CHECK(gpio_set_direction(B_BUILTIN_LED, GPIO_MODE_DEF_OUTPUT));
 	ESP_LOGI(tag, "GPIO is on for pin: %i", B_BUILTIN_LED);
@@ -96,11 +95,13 @@ void app_main()
 		return;
 	}
 
-	// DEBUG
-	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
-
 	// NTP
-	B_SyncTime();
+	if (!B_SyncTime()){
+		ESP_LOGE(tag, "Failed to get time");
+		// Not restarting device, because it may get into a loop
+		//esp_restart();
+		return;
+	}
 	B_PrintLocalTime();
 
 	// Create command queues for the tcp sever and the led controller (maximum 10 commands)
@@ -118,6 +119,9 @@ void app_main()
 
 	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &B_HandleTCPMessage, 3, NULL);
 	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
+
+	// Turn on status light 
+	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
 
 	//B_DeinitSntp();
 }

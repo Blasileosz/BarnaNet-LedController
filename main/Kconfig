@@ -1,0 +1,22 @@
+menu "BarnaNet - LED Controller Menu"
+
+	menu "LED controller"
+		config B_RED_PIN
+			int "Red pin"
+			default 13
+			range 12 33
+
+		config B_GREEN_PIN
+			int "Green pin"
+			default 12
+			range 12 33
+
+		config B_BLUE_PIN
+			int "Blue pin"
+			default 14
+			range 12 33
+ 
+	endmenu
+
+endmenu
+ 

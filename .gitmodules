@@ -1,0 +1,3 @@
+[submodule "components/BarnaNetLibrary"]
+	path = components/BarnaNetLibrary
+	url = https://github.com/Bala-Byte/BarnaNetLibrary
