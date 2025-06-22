@@ -1811,6 +1811,12 @@ CONFIG_B_BLUE_PIN=14
 #
 CONFIG_B_TCP_PORT=2005
 # end of TCP server
+
+#
+# Alarm
+#
+CONFIG_B_ALARM_CONTAINER_CAPACITY=10
+# end of Alarm
 # end of BarnaNetLibrary Menu
 # end of Component config
 

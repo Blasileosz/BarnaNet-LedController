@@ -2,4 +2,6 @@ build
 
 .vscode/settings.json
 
+test/__pycache__
+
 B_SECRET.h

@@ -1,4 +1,7 @@
 #include "B_BarnaNetCommand.h"
 
-#define B_COMMAND_DEST_LED (uint8_t) 1 // Should not add a DEST with a value of 0, as that may be interpreted as a set command of that type
-#define B_COMMAND_DEST_ALARM (uint8_t) 2
+// Should not add a DEST with a value of 0, as an empty command may be interpreted as a SET command of that type
+// DEST value of 1 and 2 are dedicated to the tcp and alarm system
+enum B_COMMAND_DEST_ENUM_LED {
+	B_COMMAND_DEST_LED = 3,
+};

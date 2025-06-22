@@ -25,9 +25,11 @@ static_assert(CONFIG_B_GREEN_PIN != CONFIG_B_BLUE_PIN);
 #define B_LED_UPDATE_HZ 40
 
 // -- COMMANDS -- //
-#define B_LED_COMMAND_STATE 0
-#define B_LED_COMMAND_COLOR 1
-#define B_LED_COMMAND_FUNCION 2
+enum B_LED_COMMAND_IDS {
+	B_LED_COMMAND_STATE,
+	B_LED_COMMAND_COLOR,
+	B_LED_COMMAND_FUNCION
+};
 
 // EXAMPLES:
 
@@ -47,11 +49,12 @@ static_assert(CONFIG_B_GREEN_PIN != CONFIG_B_BLUE_PIN);
 // - bytes 1-2: speed (ms)
 // - Example: [B_COMMAND_OP_SET | B_COMMAND_DEST_LED, B_LED_COMMAND_FUNCION, unused, FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART]
 
-// -- FUNCTIONS -- //
-#define B_LED_FUNCTION_NONE 0 // Also acts as the color transition state
-#define B_LED_FUNCTION_RAINBOW1 1
-#define B_LED_FUNCTION_RAINBOW2 2
-
+// -- DEFINITIONS -- //
+enum B_LED_FUNCTIONS {
+	B_LED_FUNCTION_NONE, // Also acts as the color transition state
+	B_LED_FUNCTION_RAINBOW1,
+	B_LED_FUNCTION_RAINBOW2
+};
 
 struct B_ledState {
 	bool isOn;

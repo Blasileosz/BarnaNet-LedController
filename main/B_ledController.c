@@ -101,10 +101,9 @@ static TickType_t B_RainbowFunction1Renderer()
 
 	ledState.timer += (1000 / B_LED_UPDATE_HZ);
 
-	B_color_t lerpedColor;
-	B_ColorLerp(startColor, endColor, (float)ledState.timer / (float)ledState.functionSpeed, &lerpedColor);
-
-	B_SetPWMColor(&lerpedColor);
+	// Save LERPed color into the state, to be able to transition from it when state changes to solo color
+	B_ColorLerp(startColor, endColor, (float)ledState.timer / (float)ledState.functionSpeed, &ledState.color);
+	B_SetPWMColor(&ledState.color);
 
 	// Restart timer on next color
 	if (ledState.timer >= ledState.functionSpeed) {
@@ -119,9 +118,10 @@ static TickType_t B_RainbowFunction1Renderer()
 static TickType_t B_RainbowFunction2Renderer()
 {
 	ledState.timer = (ledState.timer + (1000 / B_LED_UPDATE_HZ)) % ledState.functionSpeed;
-	B_color_t color = B_HSLtoRGB(ledState.timer / (float)ledState.functionSpeed * 360.0f, 1.0f, 0.5f);
 
-	B_SetPWMColor(&color);
+	// Save current color into the state, to be able to transition from it when state changes to solo color
+	ledState.color = B_HSLtoRGB(ledState.timer / (float)ledState.functionSpeed * 360.0f, 1.0f, 0.5f);
+	B_SetPWMColor(&ledState.color);
 
 	// Update timer and set block duration (execution time is not counted for simplicity)
 	return (1000 / B_LED_UPDATE_HZ) * portTICK_PERIOD_MS;
@@ -190,7 +190,7 @@ void B_LedControllerTask(void* pvParameters)
 
 					case B_LED_COMMAND_FUNCION: // FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART
 						ledState.isOn = true;
-						ledState.functionID = B_LED_FUNCTION_RAINBOW1;
+						ledState.functionID = B_LED_FUNCTION_RAINBOW1; // TODO: sanitize the requested function and put that instead of hardcode
 						ledState.functionSpeed = htons(*((uint16_t*)(&command.data[1])));
 						ledState.timer = 0;
 						break;
@@ -231,7 +231,7 @@ void B_LedControllerTask(void* pvParameters)
 
 void B_SetUpGpioPin(gpio_num_t pin)
 {
-	gpio_reset_pin(pin);
+	ESP_ERROR_CHECK(gpio_reset_pin(pin));
 	ESP_ERROR_CHECK(gpio_set_direction(pin, GPIO_MODE_DEF_OUTPUT));
 	ESP_LOGI(ledControllerTag, "GPIO is on for pin: %i", pin);
 }

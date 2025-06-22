@@ -10,6 +10,7 @@
 
 #include "B_wifi.h"
 #include "B_time.h"
+#include "B_alarm.h"
 #include "B_tcpServer.h"
 #include "B_ledController.h"
 #include "B_BarnaNetCommand.h"
@@ -22,8 +23,10 @@ static const char *tag = "BarnaNet";
 
 QueueHandle_t tcpCommandQueue = { 0 };
 QueueHandle_t ledCommandQueue = { 0 };
+QueueHandle_t alarmCommandQueue = { 0 };
 
 struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
+struct B_AlarmTaskParameter alarmTaskParameter = { 0 };
 
 // Dispatches the commands sent via TCP
 // - !Runs in the TCP task
@@ -69,9 +72,23 @@ static void B_HandleTCPMessage(const B_command_t* const command, B_command_t* co
 			responseCommand->stripID = command->stripID;
 			return;
 		}
+	} else {
+		// Handle invalid DEST
+		ESP_LOGE(tcpHandlerTag, "Invalid DEST");
+		responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
+		responseCommand->ID = command->ID;
+		responseCommand->data[0] = B_COMMAND_ERR_CLIENT;
+		return;
 	}
 
-	// Handle invalid DEST
+}
+
+// Alarm callback function
+// - !Runs in the Alarm task
+static void B_HandleAlarmMessage(const B_command_t* const command, struct B_AlarmContainer* const alarmContainer)
+{
+	ESP_LOGI(tag, "Handler function called");
+	return;
 }
 
 void app_main()
@@ -85,8 +102,9 @@ void app_main()
 	ESP_ERROR_CHECK(flashReturn);
 
 	// Set up status light
-	gpio_reset_pin(B_BUILTIN_LED);
+	ESP_ERROR_CHECK(gpio_reset_pin(B_BUILTIN_LED));
 	ESP_ERROR_CHECK(gpio_set_direction(B_BUILTIN_LED, GPIO_MODE_DEF_OUTPUT));
+	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 0));
 	ESP_LOGI(tag, "GPIO is on for pin: %i", B_BUILTIN_LED);
 
 	// Connect to WIFI
@@ -104,10 +122,11 @@ void app_main()
 	}
 	B_PrintLocalTime();
 
-	// Create command queues for the tcp sever and the led controller (maximum 10 commands)
+	// Create command queues (maximum 10 commands)
 	tcpCommandQueue = xQueueCreate(10, sizeof(B_command_t));
 	ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	if (tcpCommandQueue == NULL || ledCommandQueue == NULL) {
+	alarmCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	if (tcpCommandQueue == NULL || ledCommandQueue == NULL || alarmCommandQueue == NULL) {
 		ESP_LOGE(tag, "Failed to create queues");
 		B_DeinitSntp();
 		return;
@@ -117,10 +136,16 @@ void app_main()
 	ledControllerTaskParameter.tcpCommandQueue = &tcpCommandQueue;
 	ledControllerTaskParameter.ledCommandQueue = &ledCommandQueue;
 
+	// Alarm task parameters
+	alarmTaskParameter.alarmCommandQueue = &alarmCommandQueue;
+	alarmTaskParameter.tcpCommandQueue = &tcpCommandQueue;
+	alarmTaskParameter.handlerFunctionPointer = &B_HandleAlarmMessage;
+
 	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &B_HandleTCPMessage, 3, NULL);
 	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
+	xTaskCreate(B_AlarmTask, "B_AlarmTask", 1024 * 3, &alarmTaskParameter, 3, NULL);
 
-	// Turn on status light 
+	// Turn on status light
 	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
 
 	//B_DeinitSntp();
