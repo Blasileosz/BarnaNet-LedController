@@ -1,5 +1,7 @@
 #pragma once
 
+#define B_TASKID_LED 3
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
@@ -24,36 +26,17 @@ static_assert(CONFIG_B_GREEN_PIN != CONFIG_B_BLUE_PIN);
 
 #define B_LED_UPDATE_HZ 40
 
-// -- COMMANDS -- //
 enum B_LED_COMMAND_IDS {
 	B_LED_COMMAND_STATE,
 	B_LED_COMMAND_COLOR,
-	B_LED_COMMAND_FUNCION
+	B_LED_COMMAND_FUNCTION
 };
 
-// EXAMPLES:
-
-// GET STATE - Expected data: none
-// - Example: [B_COMMAND_OP_GET | B_COMMAND_DEST_LED, B_LED_COMMAND_STATE, unused]
-// RESPOND STATE - Response
-// - bytes 0-2: r,g,b
-// - Example: [B_COMMAND_OP_RES | B_COMMAND_DEST_LED, B_LED_COMMAND_STATE, unused, STATUS, FUNCTION_ID, FUNCTION_SPEED_HIGH, FUNCTION_SPEED_LOW, RED, GREEN, BLUE]
-
-// SET COLOR - Expected data
-// - bytes 0-2: r,g,b
-// - bytes 3-4: lerp time (ms)
-// - Example: [B_COMMAND_OP_SET | B_COMMAND_DEST_LED, B_LED_COMMAND_COLOR, unused, RED, GREEN, BLUE, TIME_HIGHPART, TIME_LOWPART]
-
-// SET FUNCTION - Expected data
-// - bytes 0: function id
-// - bytes 1-2: speed (ms)
-// - Example: [B_COMMAND_OP_SET | B_COMMAND_DEST_LED, B_LED_COMMAND_FUNCION, unused, FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART]
-
-// -- DEFINITIONS -- //
 enum B_LED_FUNCTIONS {
 	B_LED_FUNCTION_NONE, // Also acts as the color transition state
 	B_LED_FUNCTION_RAINBOW1,
-	B_LED_FUNCTION_RAINBOW2
+	B_LED_FUNCTION_RAINBOW2,
+	B_LED_FUNCTION_ENUM_SIZE
 };
 
 struct B_ledState {
@@ -68,8 +51,8 @@ struct B_ledState {
 	uint16_t timer; // miliseconds
 };
 
-// void B_SetUpPwmChanels()
-// Creates a LEDC timer and three chanels for the PWM module
+// void B_SetUpPwmChannels()
+// Creates a LEDC timer and three channels for the PWM module
 // Arguments: void
 // Returns: void
 // - Private function
@@ -104,13 +87,13 @@ struct B_ledState {
 // - Private function
 // - !Runs in the LED task
 
-struct B_LedControllerTaskParameter{
-	QueueHandle_t* tcpCommandQueue;
-	QueueHandle_t* ledCommandQueue;
+struct B_LedControllerTaskParameter {
+	B_addressMap_t* addressMap;
 };
 
 // Updates the leds
 // - !Runs in the LED Task
+// - Expected parameter: B_LedControllerTaskParameter struct
 void B_LedControllerTask(void* pvParameters);
 
 // GPIO

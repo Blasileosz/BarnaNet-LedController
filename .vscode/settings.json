@@ -14,7 +14,7 @@
      "idf.portWin": "COM3",
      "idf.pythonBinPathWin": "C:\\Users\\barna\\.espressif\\python_env\\idf5.3_py3.11_env\\Scripts\\python.exe",
      "idf.toolsPathWin": "C:\\Users\\barna\\.espressif",
-     "sonarlint.pathToCompileCommands": "${workspaceFolder}\\build\\compile_commands.json",
+     "sonarlint.pathToCompileCommands": "${workspaceFolder}/build/compile_commands.json",
      "idf.flashType": "UART",
      "files.associations": {
           "*.ejs": "html",
@@ -35,6 +35,9 @@
           "*.fsh": "hlsl",
           "_redirects": "plaintext",
           "test.h": "c",
-          "b_tcpserver.h": "c"
-     }
+          "b_tcpserver.h": "c",
+          "b_colorutil.h": "c",
+          "limits": "c"
+     },
+     "idf.pythonInstallPath": "/opt/esp/python_env/idf6.0_py3.12_env/bin/python"
 }

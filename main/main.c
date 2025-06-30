@@ -15,81 +15,15 @@
 #include "B_ledController.h"
 #include "B_BarnaNetCommand.h"
 
-#include "B_LedControllerCommand.h"
-
 #define B_BUILTIN_LED 2
 
 static const char *tag = "BarnaNet";
 
-QueueHandle_t tcpCommandQueue = { 0 };
-QueueHandle_t ledCommandQueue = { 0 };
-QueueHandle_t alarmCommandQueue = { 0 };
+B_addressMap_t addressMap = { 0 };
 
-struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
+struct B_TcpTaskParameter tcpTaskParameter = { 0 };
 struct B_AlarmTaskParameter alarmTaskParameter = { 0 };
-
-// Dispatches the commands sent via TCP
-// - !Runs in the TCP task
-static void B_HandleTCPMessage(const B_command_t* const command, B_command_t* const responseCommand)
-{
-	static const char* tcpHandlerTag = "BarnaNet - TCP Handler";
-
-	// Sanitize request type
-	if (B_COMMAND_OP(command->header) == B_COMMAND_OP_RES || B_COMMAND_OP(command->header) == B_COMMAND_OP_ERR) {
-		ESP_LOGE(tcpHandlerTag, "Invalid request type");
-		responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
-		responseCommand->ID = command->ID;
-		responseCommand->data[0] = B_COMMAND_ERR_CLIENT;
-		return;
-	}
-
-	// Command for the LED controller
-	if (B_COMMAND_DEST(command->header) == B_COMMAND_DEST_LED) {
-
-		// Send the command off to the led controller to process
-		if (xQueueSend(ledCommandQueue, (void* const)command, 0) != pdPASS) {
-			ESP_LOGE(tcpHandlerTag, "Command unable to be inserted into the queue");
-			responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
-			responseCommand->ID = command->ID;
-			responseCommand->data[0] = B_COMMAND_ERR_INTERNAL;
-			return;
-		}
-
-		// GET command, must wait for reply
-		if (B_COMMAND_OP(command->header) == B_COMMAND_OP_GET) {
-
-			if (xQueueReceive(tcpCommandQueue, (void* const)responseCommand, portTICK_PERIOD_MS * 1000) != pdPASS) {
-				ESP_LOGE(tcpHandlerTag, "LED Controller did not reply to get request");
-				responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
-				responseCommand->ID = command->ID;
-				responseCommand->data[0] = B_COMMAND_ERR_INTERNAL;
-				return;
-			}
-
-			// Send back to client (fill header just in case)
-			responseCommand->header = B_COMMAND_OP_RES | B_COMMAND_DEST(command->header);
-			responseCommand->ID = command->ID;
-			responseCommand->stripID = command->stripID;
-			return;
-		}
-	} else {
-		// Handle invalid DEST
-		ESP_LOGE(tcpHandlerTag, "Invalid DEST");
-		responseCommand->header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command->header);
-		responseCommand->ID = command->ID;
-		responseCommand->data[0] = B_COMMAND_ERR_CLIENT;
-		return;
-	}
-
-}
-
-// Alarm callback function
-// - !Runs in the Alarm task
-static void B_HandleAlarmMessage(const B_command_t* const command, struct B_AlarmContainer* const alarmContainer)
-{
-	ESP_LOGI(tag, "Handler function called");
-	return;
-}
+struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
 
 void app_main()
 {
@@ -122,31 +56,49 @@ void app_main()
 	}
 	B_PrintLocalTime();
 
-	// Create command queues (maximum 10 commands)
-	tcpCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	alarmCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	if (tcpCommandQueue == NULL || ledCommandQueue == NULL || alarmCommandQueue == NULL) {
-		ESP_LOGE(tag, "Failed to create queues");
-		B_DeinitSntp();
+	// Queues
+	if(!B_AddressMapInit(&addressMap, 3)){
+		ESP_LOGE(tag, "Failed to create address map");
+		B_SntpCleanup();
 		return;
 	}
 
+	// Create command queues (maximum 10 commands)
+	QueueHandle_t tcpCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	QueueHandle_t ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	QueueHandle_t alarmCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	if (tcpCommandQueue == NULL || ledCommandQueue == NULL || alarmCommandQueue == NULL) {
+		ESP_LOGE(tag, "Failed to create queues");
+		B_SntpCleanup();
+		return;
+	}
+
+	// Insert queues into the address map
+	B_InsertAddress(&addressMap, 0, B_TASKID_TCP, tcpCommandQueue, 0);
+	B_InsertAddress(&addressMap, 1, B_TASKID_LED, ledCommandQueue, 0);
+	B_InsertAddress(&addressMap, 2, B_TASKID_ALARM, alarmCommandQueue, B_TASK_FLAG_NO_STATUS_REPLY);
+
+	// Prepare TCP task parameters
+	tcpTaskParameter.addressMap = &addressMap;
+
 	// Preapare led task parameters
-	ledControllerTaskParameter.tcpCommandQueue = &tcpCommandQueue;
-	ledControllerTaskParameter.ledCommandQueue = &ledCommandQueue;
+	ledControllerTaskParameter.addressMap = &addressMap;
 
-	// Alarm task parameters
-	alarmTaskParameter.alarmCommandQueue = &alarmCommandQueue;
-	alarmTaskParameter.tcpCommandQueue = &tcpCommandQueue;
-	alarmTaskParameter.handlerFunctionPointer = &B_HandleAlarmMessage;
+	// Prepare alarm task parameters
+	alarmTaskParameter.addressMap = &addressMap;
 
-	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &B_HandleTCPMessage, 3, NULL);
+	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &tcpTaskParameter, 3, NULL);
 	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
 	xTaskCreate(B_AlarmTask, "B_AlarmTask", 1024 * 3, &alarmTaskParameter, 3, NULL);
 
 	// Turn on status light
 	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
 
-	//B_DeinitSntp();
+	// A task should never return (when should the systems be cleaned up?)
+	vTaskDelete(NULL);
+
+	//B_SntpCleanup();
+	//B_WifiDisconnect();
+	//B_WifiCleanup();
+	//B_AddressmapCleanup(&addressMap);
 }

@@ -15,7 +15,7 @@ static B_color_t rainbow[] = {
 static struct B_ledState ledState = { 0 };
 
 
-static void B_SetUpPwmChanels()
+static void B_SetUpPwmChannels()
 {
 	ledc_timer_config_t timer = {
 		.speed_mode = LEDC_HIGH_SPEED_MODE,
@@ -26,7 +26,7 @@ static void B_SetUpPwmChanels()
 	};
 	ESP_ERROR_CHECK(ledc_timer_config(&timer));
 
-	ledc_channel_config_t redChanel = {
+	ledc_channel_config_t redChannel = {
 		.speed_mode = LEDC_HIGH_SPEED_MODE,
 		.channel = LEDC_CHANNEL_0,
 		.timer_sel = LEDC_TIMER_0,
@@ -35,7 +35,7 @@ static void B_SetUpPwmChanels()
 		.duty = 0,
 		.hpoint = 0
 	};
-	ESP_ERROR_CHECK(ledc_channel_config(&redChanel));
+	ESP_ERROR_CHECK(ledc_channel_config(&redChannel));
 
 	ledc_channel_config_t greenChannel = {
 		.speed_mode = LEDC_HIGH_SPEED_MODE,
@@ -76,7 +76,6 @@ static void B_SetPWMColor(const B_color_t* const color)
 
 static TickType_t B_ColorTransitionRenderer()
 {
-
 	ledState.timer += (1000 / B_LED_UPDATE_HZ);
 
 	B_color_t lerpedColor;
@@ -90,7 +89,7 @@ static TickType_t B_ColorTransitionRenderer()
 	}
 
 	// Update timer and set block duration (execution time is not counted for simplicity)
-	return (1000 / B_LED_UPDATE_HZ) * portTICK_PERIOD_MS;
+	return pdMS_TO_TICKS(1000 / B_LED_UPDATE_HZ);
 }
 
 static TickType_t B_RainbowFunction1Renderer()
@@ -112,7 +111,7 @@ static TickType_t B_RainbowFunction1Renderer()
 	}
 
 	// Update timer and set block duration (execution time is not counted for simplicity)
-	return (1000 / B_LED_UPDATE_HZ) * portTICK_PERIOD_MS;
+	return pdMS_TO_TICKS(1000 / B_LED_UPDATE_HZ);
 }
 
 static TickType_t B_RainbowFunction2Renderer()
@@ -124,86 +123,108 @@ static TickType_t B_RainbowFunction2Renderer()
 	B_SetPWMColor(&ledState.color);
 
 	// Update timer and set block duration (execution time is not counted for simplicity)
-	return (1000 / B_LED_UPDATE_HZ) * portTICK_PERIOD_MS;
+	return pdMS_TO_TICKS(1000 / B_LED_UPDATE_HZ);
 }
 
 void B_LedControllerTask(void* pvParameters)
 {
-	const struct B_LedControllerTaskParameter* const queues = (const struct B_LedControllerTaskParameter* const)pvParameters;
-	if (queues == NULL || queues->tcpCommandQueue == NULL || queues->ledCommandQueue == NULL) {
+	const struct B_LedControllerTaskParameter* const taskParameter = (const struct B_LedControllerTaskParameter* const)pvParameters;
+	if (taskParameter == NULL || taskParameter->addressMap == NULL) {
 		ESP_LOGE(ledControllerTag, "Led Controller task parameter invalid, aborting startup");
 		vTaskDelete(NULL);
 	}
 
-	B_SetUpPwmChanels();
+	B_SetUpPwmChannels();
 
-	TickType_t blockTicks = portMAX_DELAY; // Variably blocks the receive function, also used to time trasitions and functions
+	TickType_t blockTicks = portMAX_DELAY; // Variably blocks the receive function, used to time trasitions and functions
 	B_command_t command = { 0 };
 	while (true) {
+
 		// Get new command from command queue if there is one
-		if (xQueueReceive(*queues->ledCommandQueue, (void* const)&command, blockTicks) == pdPASS) {
-			ESP_LOGI(ledControllerTag, "Received LED command: header: %u, ID: %u", command.header, command.ID);
+		QueueHandle_t ledQueue = B_GetAddress(taskParameter->addressMap, B_TASKID_LED);
+		if (xQueueReceive(ledQueue, (void* const)&command, blockTicks) == pdPASS) {
+
+			uint8_t commandOP = B_COMMAND_OP(command.header);
+			uint8_t commandID = B_COMMAND_ID(command.header);
+
+			ESP_LOGI(ledControllerTag, "Received LED command ID: %u", commandID);
 
 			// Handle received command
-			if (B_COMMAND_OP(command.header) == B_COMMAND_OP_GET) { // --- GET
+			if (commandOP == B_COMMAND_OP_GET) { // --- GET
 				B_command_t responseCommand = { 0 };
 
-				switch (command.ID) {
+				responseCommand.header = B_COMMAND_OP_RES | commandID;
+				responseCommand.from = B_TASKID_LED;
+				responseCommand.dest = command.from;
+
+				switch (commandID) {
 					case B_LED_COMMAND_STATE: // STATUS, FUNCTION_ID, FUNCTION_SPEED_HIGH, FUNCTION_SPEED_LOW, RED, GREEN, BLUE
-						responseCommand.header = B_COMMAND_OP_RES | B_COMMAND_DEST(command.header);
-						responseCommand.ID = command.ID;
-						responseCommand.data[0] = ledState.isOn;
-						responseCommand.data[1] = ledState.functionID;
-						*((uint16_t*)&responseCommand.data[2]) = ntohs(ledState.functionSpeed);
-						responseCommand.data[4] = ledState.color.red;
-						responseCommand.data[5] = ledState.color.green;
-						responseCommand.data[6] = ledState.color.blue;
+						B_FillCommandBody_BYTE(&responseCommand, 0, ledState.isOn);
+						B_FillCommandBody_BYTE(&responseCommand, 1, ledState.functionID);
+						B_FillCommandBody_WORD(&responseCommand, 2, ledState.functionSpeed);
+						B_FillCommandBody_BYTE(&responseCommand, 4, ledState.color.red);
+						B_FillCommandBody_BYTE(&responseCommand, 5, ledState.color.green);
+						B_FillCommandBody_BYTE(&responseCommand, 6, ledState.color.blue);
 						break;
 
 					default:
 						ESP_LOGE(ledControllerTag, "Invalid GET command ID received");
-						responseCommand.header = B_COMMAND_OP_ERR | B_COMMAND_DEST(command.header);
-						responseCommand.ID = command.ID;
-						responseCommand.data[0] = B_COMMAND_ERR_CLIENT;
+						responseCommand.header = B_COMMAND_OP_ERR;
+						B_FillCommandBodyString(&responseCommand, "Invalid GET command ID received");
 						break;
 				}
 
 				// Send back response
-				if (xQueueSend(*queues->tcpCommandQueue, &responseCommand, 0) != pdPASS) {
-					ESP_LOGE(ledControllerTag, "Failed to send data back to TCP server");
+				QueueHandle_t responseQueue = B_GetAddress(taskParameter->addressMap, responseCommand.dest);
+				if (xQueueSend(responseQueue, &responseCommand, 0) != pdPASS) {
+					ESP_LOGE(ledControllerTag, "Failed to send data back to sender");
 				}
 
 			}
-			else if (B_COMMAND_OP(command.header) == B_COMMAND_OP_SET) { // --- SET
+			else if (commandOP == B_COMMAND_OP_SET) { // --- SET
 
-				switch (command.ID) {
+				switch (commandID) {
 					case B_LED_COMMAND_COLOR: // RED, GREEN, BLUE, TIME_HIGHPART, TIME_LOWPART
 						ledState.isOn = true;
 						ledState.functionID = B_LED_FUNCTION_NONE;
-						ledState.functionSpeed = htons(*((uint16_t*)(&command.data[3])));
+						ledState.functionSpeed = B_ReadCommandBody_WORD(&command, 3);
+
 						ledState.previousColor = ledState.color;
-						ledState.color.red = command.data[0];
-						ledState.color.green = command.data[1];
-						ledState.color.blue = command.data[2];
+						ledState.color.red = B_ReadCommandBody_BYTE(&command, 0);
+						ledState.color.green = B_ReadCommandBody_BYTE(&command, 1);
+						ledState.color.blue = B_ReadCommandBody_BYTE(&command, 2);
 						ledState.timer = 0;
+
+						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_RES, commandID, "OK");
 						break;
 
-					case B_LED_COMMAND_FUNCION: // FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART
+					case B_LED_COMMAND_FUNCTION: // FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART
+						// Sanitize function id
+						uint8_t newFunctionID = B_ReadCommandBody_BYTE(&command, 0);
+						if (newFunctionID >= B_LED_FUNCTION_ENUM_SIZE || newFunctionID == B_LED_FUNCTION_NONE) {
+							ESP_LOGW(ledControllerTag, "Invalid function ID received");
+							B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_ERR, commandID, "Invalid function ID");
+							break;
+						}
+
 						ledState.isOn = true;
-						ledState.functionID = B_LED_FUNCTION_RAINBOW1; // TODO: sanitize the requested function and put that instead of hardcode
-						ledState.functionSpeed = htons(*((uint16_t*)(&command.data[1])));
+						ledState.functionID = newFunctionID;
+						ledState.functionSpeed = B_ReadCommandBody_WORD(&command, 1);
 						ledState.timer = 0;
+
+						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_RES, commandID, "OK");
 						break;
 
 					default:
-						ESP_LOGE(ledControllerTag, "Invalid SET command ID received");
-						// TODO: Respond?
+						ESP_LOGW(ledControllerTag, "Invalid SET command ID received");
+						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_ERR, commandID, "Invalid SET command");
 						break;
 				}
 			}
 
 		}
 
+		// TODO: The speed for function 2 is for the entire rainbow, while for function 1 it is for one transition, making the second much faster compared to the first one
 		// Handle LED state
 		switch (ledState.functionID) {
 			case B_LED_FUNCTION_NONE:

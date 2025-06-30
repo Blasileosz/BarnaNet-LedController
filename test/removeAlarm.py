@@ -5,8 +5,8 @@ tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 tcp_socket.settimeout(5)
 tcp_socket.connect((HOST, PORT))
 
-# [FROM, B_COMMAND_DEST_LED, B_COMMAND_OP_GET | B_LED_COMMAND_STATE]
-data = [0, B_COMMAND_DEST_LED, B_COMMAND_OP_GET | B_LED_COMMAND_STATE]
+data = [0, B_COMMAND_DEST_ALARM, B_COMMAND_OP_SET | B_ALARM_COMMAND_REMOVE, 0]
+
 print(data)
 tcp_socket.sendall(bytes(data))
 
