@@ -1,6 +1,6 @@
 #pragma once
 
-#define B_TASKID_LED 3
+#define B_TASKID_LED 11
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -11,6 +11,8 @@
 #include <esp_event.h>
 #include <esp_log.h>
 
+#include <nvs_flash.h>
+
 #include <lwip/sockets.h>
 
 #include <driver/gpio.h> // Basic GPIO control
@@ -19,6 +21,9 @@
 #include "B_SECRET.h"
 #include "B_BarnaNetCommand.h"
 #include "B_colorUtil.h"
+
+#define B_LED_NVS_NAMESPACE "B_LED"
+#define B_LED_NVS_BUFFER "B_LED_BUFFER"
 
 static_assert(CONFIG_B_RED_PIN != CONFIG_B_GREEN_PIN);
 static_assert(CONFIG_B_RED_PIN != CONFIG_B_BLUE_PIN);
@@ -48,7 +53,7 @@ struct B_ledState {
 	B_color_t color; // If on a gradual function (like rainbow), this should follow the color of the strip, to be able to transition from that when a color command is received
 	B_color_t previousColor;
 
-	uint16_t timer; // miliseconds
+	uint16_t timer; // milliseconds
 };
 
 // void B_SetUpPwmChannels()
@@ -61,6 +66,20 @@ struct B_ledState {
 // void B_SetPWMColor(const B_color_t* const);
 // Changes color of the LEDs
 // Arguments: color: the color passed to the PWM module
+// Returns: void
+// - Private function
+// - !Runs in the LED task
+
+// void B_LoadLedStateFromNVS()
+// Loads the LED state from NVS
+// Arguments: void
+// Returns: void
+// - Private function
+// - !Runs in the LED task
+
+// void B_SaveLedStateToNVS()
+// Saves the LED state to NVS
+// Arguments: void
 // Returns: void
 // - Private function
 // - !Runs in the LED task

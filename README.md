@@ -10,6 +10,7 @@
 	- USB to UART bridge [CP210x Windows Drivers](https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers?tab=downloads)
 - The version is controlled by the Dockerfile
 	- There are [docs](https://docs.espressif.com/projects/esp-idf/en/v5.5-beta1/esp32/versions.html#updating-to-stable-release) on how to upgrade manualy
+- Git needs to be configured to auto convert to CRLF (otherwise it would mess up the commits): `git config --global core.autocrlf true`
 
 ### Flasing and monitoring
 Windows WSL does not support USB passthrough. To get around this, a [remote serial port](https://docs.espressif.com/projects/esptool/en/latest/esp32/remote-serial-ports.html#pyserial-example-servers) needs to be created on the host machine.
@@ -45,3 +46,4 @@ For definition, see [B_ledController.h](/main/B_ledController.h)
 - The pins controlling the LEDs are defined in the menuconfig
 - The LED update frequency in defined in the [B_ledController.h](/main/B_ledController.h) file
 - The LED controller receives commands through queues, using the address map system
+- The task saves its state to the NVS flash and loads it back when started

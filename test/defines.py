@@ -2,12 +2,6 @@
 HOST = '192.168.0.80'
 PORT = 2005
 
-# // COMMAND HEADER:	0b11222222
-# // COMMAND ID:		0b33333333
-# // 1: Command operation (Get, Set, Response, Error)
-# // 2: Command destination (LED controller, Alarm system, etc.)
-# // 3: Command id (Unique identifier for a command given the operation and destination)
-
 SerializeDWORD = lambda n : [int(i) for i in n.to_bytes(4, byteorder='big', signed=True)]
 SerializeWORD = lambda n : [int(i) for i in n.to_bytes(2, byteorder='big', signed=True)]
 
@@ -17,15 +11,17 @@ B_COMMAND_OP_GET = 0b01000000
 B_COMMAND_OP_RES = 0b10000000
 B_COMMAND_OP_ERR = 0b11000000
 
-# No need to send the from field in the tcp message
-B_PLACEHOLDER_FROM = 0
+B_COMMAND_ID_MASK = 0b00111111
 
-B_COMMAND_DEST_MASK = 0b00111111
+B_PLACEHOLDER_FROM = 0 # No need to send the from field in the tcp message
+B_PLACEHOLDER_TID = 0 # No need to send the transmission ID field in the tcp message
+
 B_COMMAND_DEST_TCP = 1
 B_COMMAND_DEST_ALARM = 2
-B_COMMAND_DEST_LED = 3
+B_COMMAND_DEST_MQTT = 3
+B_COMMAND_DEST_LED = 11
 
-B_LED_COMMAND_STATE = 0 # Only get
+B_LED_COMMAND_STATE = 0 # get/set
 B_LED_COMMAND_COLOR = 1 # Only set
 B_LED_COMMAND_FUNCTION = 2 # Only set
 

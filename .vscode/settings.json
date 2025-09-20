@@ -37,7 +37,22 @@
           "test.h": "c",
           "b_tcpserver.h": "c",
           "b_colorutil.h": "c",
-          "limits": "c"
+          "limits": "c",
+          "cstdlib": "c",
+          "charconv": "c",
+          "chrono": "c",
+          "optional": "c",
+          "format": "c",
+          "ratio": "c",
+          "system_error": "c",
+          "array": "c",
+          "functional": "c",
+          "regex": "c",
+          "tuple": "c",
+          "type_traits": "c",
+          "utility": "c",
+          "cjson.h": "c",
+          "random": "c"
      },
      "idf.pythonInstallPath": "/opt/esp/python_env/idf6.0_py3.12_env/bin/python"
 }

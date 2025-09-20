@@ -1,6 +1,7 @@
 # Docs: https://hub.docker.com/r/espressif/idf
 # :latest may download the latest dev branch
-FROM espressif/idf:v5.4.2
+#FROM espressif/idf:v5.4.2
+FROM espressif/idf
 
 ARG DEBIAN_FRONTEND=nointeractive
 ARG CONTAINER_USER=esp
@@ -48,6 +49,6 @@ ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 
 CMD ["/bin/bash", "-c"]
 
-# Add remote port to env (either ESP_PORT or ESPPORT)
-# Changing it in bash: export ESP_PORT="rfc2217://host.docker.internal:4000"
-ENV ESP_PORT="rfc2217://host.docker.internal:4000?ign_set_control monitor"
+# Add remote port to env
+# Changing it in bash: export ESPPORT="rfc2217://host.docker.internal:4000?ign_set_control"
+ENV ESPPORT="rfc2217://host.docker.internal:4000?ign_set_control"

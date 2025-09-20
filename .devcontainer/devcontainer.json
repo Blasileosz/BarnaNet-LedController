@@ -14,7 +14,11 @@
 				"idf.gitPath": "/usr/bin/git"
 			},
 			"extensions": [
-				"espressif.esp-idf-extension"
+				"espressif.esp-idf-extension",
+				"espressif.esp-idf-web",
+				"ms-python.python",
+				"ms-vscode.cpptools-extension-pack",
+				"sonarsource.sonarlint-vscode"
 			]
 		},
 		"codespaces": {
@@ -27,10 +31,7 @@
 				"idf.gitPath": "/usr/bin/git"
 			},
 			"extensions": [
-				"espressif.esp-idf-extension",
-				"espressif.esp-idf-web",
-				"ms-vscode.cpptools-extension-pack",
-				"sonarsource.sonarlint-vscode"
+				"espressif.esp-idf-extension"
 			]
 		}
 	},

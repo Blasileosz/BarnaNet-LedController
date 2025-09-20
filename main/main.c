@@ -10,6 +10,7 @@
 
 #include "B_wifi.h"
 #include "B_time.h"
+#include "B_mqtt.h"
 #include "B_alarm.h"
 #include "B_tcpServer.h"
 #include "B_ledController.h"
@@ -21,8 +22,9 @@ static const char *tag = "BarnaNet";
 
 B_addressMap_t addressMap = { 0 };
 
-struct B_TcpTaskParameter tcpTaskParameter = { 0 };
+struct B_TCPIngressTaskParameter tcpIngressTaskParameter = { 0 };
 struct B_AlarmTaskParameter alarmTaskParameter = { 0 };
+struct B_MQTTTaskParameter mqttTaskParameter = { 0 };
 struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
 
 void app_main()
@@ -30,15 +32,17 @@ void app_main()
 	// Init NVS
 	esp_err_t flashReturn = nvs_flash_init();
 	if (flashReturn == ESP_ERR_NVS_NO_FREE_PAGES || flashReturn == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+		// NVS partition was truncated and needs to be erased
 		ESP_ERROR_CHECK(nvs_flash_erase());
+		ESP_LOGI(tag, "NVS partition got corrupted, erased it");
 		flashReturn = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK(flashReturn);
 
-	// Set up status light
+	// Set up boot light
 	ESP_ERROR_CHECK(gpio_reset_pin(B_BUILTIN_LED));
 	ESP_ERROR_CHECK(gpio_set_direction(B_BUILTIN_LED, GPIO_MODE_DEF_OUTPUT));
-	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 0));
+	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
 	ESP_LOGI(tag, "GPIO is on for pin: %i", B_BUILTIN_LED);
 
 	// Connect to WIFI
@@ -56,43 +60,58 @@ void app_main()
 	}
 	B_PrintLocalTime();
 
-	// Queues
-	if(!B_AddressMapInit(&addressMap, 3)){
-		ESP_LOGE(tag, "Failed to create address map");
-		B_SntpCleanup();
-		return;
-	}
-
 	// Create command queues (maximum 10 commands)
 	QueueHandle_t tcpCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	QueueHandle_t ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
 	QueueHandle_t alarmCommandQueue = xQueueCreate(10, sizeof(B_command_t));
-	if (tcpCommandQueue == NULL || ledCommandQueue == NULL || alarmCommandQueue == NULL) {
+	QueueHandle_t mqttCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	QueueHandle_t ledCommandQueue = xQueueCreate(10, sizeof(B_command_t));
+	if (tcpCommandQueue == NULL || alarmCommandQueue == NULL || mqttCommandQueue == NULL || ledCommandQueue == NULL) {
 		ESP_LOGE(tag, "Failed to create queues");
 		B_SntpCleanup();
 		return;
 	}
 
+	// Address Map
+	if (!B_AddressMapInit(&addressMap, 4)) {
+		ESP_LOGE(tag, "Failed to create address map");
+		B_SntpCleanup();
+
+		// Manually delete the command queues
+		vQueueDelete(tcpCommandQueue);
+		vQueueDelete(alarmCommandQueue);
+		vQueueDelete(mqttCommandQueue);
+		vQueueDelete(ledCommandQueue);
+		return;
+	}
+
 	// Insert queues into the address map
-	B_InsertAddress(&addressMap, 0, B_TASKID_TCP, tcpCommandQueue, 0);
-	B_InsertAddress(&addressMap, 1, B_TASKID_LED, ledCommandQueue, 0);
-	B_InsertAddress(&addressMap, 2, B_TASKID_ALARM, alarmCommandQueue, B_TASK_FLAG_NO_STATUS_REPLY);
+	B_InsertAddress(&addressMap, 0, B_TASKID_TCP, tcpCommandQueue, B_TASK_FLAG_ONLY_REPLY);
+	B_InsertAddress(&addressMap, 1, B_TASKID_ALARM, alarmCommandQueue, B_TASK_FLAG_NO_REPLY);
+	B_InsertAddress(&addressMap, 2, B_TASKID_MQTT, mqttCommandQueue, B_TASK_FLAG_ONLY_REPLY);
+	B_InsertAddress(&addressMap, 3, B_TASKID_LED, ledCommandQueue, 0);
 
 	// Prepare TCP task parameters
-	tcpTaskParameter.addressMap = &addressMap;
+	tcpIngressTaskParameter.addressMap = &addressMap;
 
-	// Preapare led task parameters
-	ledControllerTaskParameter.addressMap = &addressMap;
+	// Prepare MQTT task parameters
+	mqttTaskParameter.addressMap = &addressMap;
 
 	// Prepare alarm task parameters
 	alarmTaskParameter.addressMap = &addressMap;
 
-	xTaskCreate(B_TCPTask, "B_TCPTask", 1024 * 4, &tcpTaskParameter, 3, NULL);
-	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
-	xTaskCreate(B_AlarmTask, "B_AlarmTask", 1024 * 3, &alarmTaskParameter, 3, NULL);
+	// Prepare led task parameters
+	ledControllerTaskParameter.addressMap = &addressMap;
 
-	// Turn on status light
-	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 1));
+	xTaskCreate(B_TCPIngressTask, "B_TCPIngressTask", 1024 * 4, &tcpIngressTaskParameter, 3, NULL);
+	xTaskCreate(B_AlarmTask, "B_AlarmTask", 1024 * 3, &alarmTaskParameter, 3, NULL);
+	xTaskCreate(B_LedControllerTask, "B_LedControllerTask", 1024 * 4, &ledControllerTaskParameter, 3, NULL);
+	xTaskCreate(B_MQTTTask, "B_MQTTTask", 1024 * 4, &mqttTaskParameter, 3, NULL);
+
+	// Turn off boot light
+	ESP_ERROR_CHECK(gpio_set_level(B_BUILTIN_LED, 0));
+
+	ESP_LOGI(tag, "Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
+	ESP_LOGI(tag, "IDF version: %s", esp_get_idf_version());
 
 	// A task should never return (when should the systems be cleaned up?)
 	vTaskDelete(NULL);

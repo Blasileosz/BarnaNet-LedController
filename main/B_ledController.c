@@ -74,6 +74,57 @@ static void B_SetPWMColor(const B_color_t* const color)
 	ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2));
 }
 
+static void B_LoadLedStateFromNVS()
+{
+	nvs_handle_t nvsHandle;
+	esp_err_t err = nvs_open(B_LED_NVS_NAMESPACE, NVS_READONLY, &nvsHandle);
+
+	// Namespace not yet initialized, it does by saving a value to it
+	if (err == ESP_ERR_NVS_NOT_FOUND) {
+		ESP_LOGI(ledControllerTag, "NVS namespace not yet initialized");
+		nvs_close(nvsHandle);
+		return;
+	}
+		
+	// Read the stored buffer size in bytes
+	size_t requiredBufferSize = 0; // Size in bytes
+	err = nvs_get_blob(nvsHandle, B_LED_NVS_BUFFER, NULL, &requiredBufferSize);
+	if (requiredBufferSize == 0 || err == ESP_ERR_NVS_NOT_FOUND) {
+		ESP_LOGI(ledControllerTag, "NVS buffer not yet initialized");
+		nvs_close(nvsHandle);
+		return;
+	} else ESP_ERROR_CHECK(err);
+
+	// Check if the buffer size matches the B_ledState structure size
+	if (requiredBufferSize != sizeof(struct B_ledState)) {
+		// Structure does not align, probably changed, do not load
+		ESP_LOGW(ledControllerTag, "B_ledState struct size and NVS buffer size doesn't match, erasing flash");
+		nvs_erase_key(nvsHandle, B_LED_NVS_BUFFER);
+		nvs_commit(nvsHandle);
+		nvs_close(nvsHandle);
+		return;
+	}
+
+	err = nvs_get_blob(nvsHandle, B_LED_NVS_BUFFER, &ledState, &requiredBufferSize);
+	ESP_ERROR_CHECK(err); // Assume err cannot be ESP_ERR_NVS_NOT_FOUND here, as it was checked above
+	
+	nvs_close(nvsHandle);
+	ESP_LOGI(ledControllerTag, "LED state loaded from NVS");
+}
+
+static void B_SaveLedStateToNVS()
+{
+	nvs_handle_t nvsHandle;
+	ESP_ERROR_CHECK(nvs_open(B_LED_NVS_NAMESPACE, NVS_READWRITE, &nvsHandle));
+
+	ESP_ERROR_CHECK(nvs_set_blob(nvsHandle, B_LED_NVS_BUFFER, &ledState, sizeof(struct B_ledState)));
+
+	ESP_ERROR_CHECK(nvs_commit(nvsHandle));
+	
+	nvs_close(nvsHandle);
+	ESP_LOGI(ledControllerTag, "LED state saved to NVS");
+}
+
 static TickType_t B_ColorTransitionRenderer()
 {
 	ledState.timer += (1000 / B_LED_UPDATE_HZ);
@@ -134,14 +185,22 @@ void B_LedControllerTask(void* pvParameters)
 		vTaskDelete(NULL);
 	}
 
+	QueueHandle_t ledQueue = B_GetAddress(taskParameter->addressMap, B_TASKID_LED);
+	if (ledQueue == B_ADDRESS_MAP_INVALID_QUEUE) {
+		ESP_LOGE(ledControllerTag, "Led Controller queue invalid, aborting startup");
+		vTaskDelete(NULL);
+	}
+
 	B_SetUpPwmChannels();
 
-	TickType_t blockTicks = portMAX_DELAY; // Variably blocks the receive function, used to time trasitions and functions
-	B_command_t command = { 0 };
-	while (true) {
+	B_LoadLedStateFromNVS();
 
+	// Variably blocks the receive function, used to time trasitions and functions
+	TickType_t blockTicks = 0; // Defaults to zero in order to be able to display the NVS loaded state
+	while (true) {
+		
 		// Get new command from command queue if there is one
-		QueueHandle_t ledQueue = B_GetAddress(taskParameter->addressMap, B_TASKID_LED);
+		B_command_t command = { 0 };
 		if (xQueueReceive(ledQueue, (void* const)&command, blockTicks) == pdPASS) {
 
 			uint8_t commandOP = B_COMMAND_OP(command.header);
@@ -153,10 +212,6 @@ void B_LedControllerTask(void* pvParameters)
 			if (commandOP == B_COMMAND_OP_GET) { // --- GET
 				B_command_t responseCommand = { 0 };
 
-				responseCommand.header = B_COMMAND_OP_RES | commandID;
-				responseCommand.from = B_TASKID_LED;
-				responseCommand.dest = command.from;
-
 				switch (commandID) {
 					case B_LED_COMMAND_STATE: // STATUS, FUNCTION_ID, FUNCTION_SPEED_HIGH, FUNCTION_SPEED_LOW, RED, GREEN, BLUE
 						B_FillCommandBody_BYTE(&responseCommand, 0, ledState.isOn);
@@ -165,25 +220,42 @@ void B_LedControllerTask(void* pvParameters)
 						B_FillCommandBody_BYTE(&responseCommand, 4, ledState.color.red);
 						B_FillCommandBody_BYTE(&responseCommand, 5, ledState.color.green);
 						B_FillCommandBody_BYTE(&responseCommand, 6, ledState.color.blue);
+
+						if (!B_SendReplyCommand(taskParameter->addressMap, &command, &responseCommand, B_TASKID_LED)) {
+							ESP_LOGE(ledControllerTag, "Failed to send state response command");
+						}
 						break;
 
 					default:
 						ESP_LOGE(ledControllerTag, "Invalid GET command ID received");
-						responseCommand.header = B_COMMAND_OP_ERR;
-						B_FillCommandBodyString(&responseCommand, "Invalid GET command ID received");
+						B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_ERR, "Invalid GET command ID received");
 						break;
 				}
-
-				// Send back response
-				QueueHandle_t responseQueue = B_GetAddress(taskParameter->addressMap, responseCommand.dest);
-				if (xQueueSend(responseQueue, &responseCommand, 0) != pdPASS) {
-					ESP_LOGE(ledControllerTag, "Failed to send data back to sender");
-				}
-
 			}
 			else if (commandOP == B_COMMAND_OP_SET) { // --- SET
 
 				switch (commandID) {
+					case B_LED_COMMAND_STATE: // ISON, TIME_HIGHPART, TIME_LOWPART
+						if (B_ReadCommandBody_BYTE(&command, 0)) {
+							ledState.isOn = true;
+							
+							if (ledState.previousColor.red == 0 && ledState.previousColor.green == 0 && ledState.previousColor.blue == 0)
+								ledState.color = (B_color_t){ 255, 255, 255 }; // If previous color was black, set to white
+							else
+								ledState.color = ledState.previousColor; // Transition from previous color
+						} else {
+							ledState.isOn = false;
+							ledState.previousColor = ledState.color; // Save current color to be able to transition from it when a color command is received
+							ledState.color = (B_color_t){ 0, 0, 0 }; // Reset color to black
+						}
+						
+						ledState.functionID = B_LED_FUNCTION_NONE;
+						ledState.functionSpeed = B_ReadCommandBody_WORD(&command, 1);
+						ledState.timer = 0;
+						
+						B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_RES, "OK");
+						break;
+
 					case B_LED_COMMAND_COLOR: // RED, GREEN, BLUE, TIME_HIGHPART, TIME_LOWPART
 						ledState.isOn = true;
 						ledState.functionID = B_LED_FUNCTION_NONE;
@@ -195,7 +267,8 @@ void B_LedControllerTask(void* pvParameters)
 						ledState.color.blue = B_ReadCommandBody_BYTE(&command, 2);
 						ledState.timer = 0;
 
-						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_RES, commandID, "OK");
+						B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_RES, "OK");
+
 						break;
 
 					case B_LED_COMMAND_FUNCTION: // FUNCTION_ID, SPEED_HIGHPART, SPEED_LOWPART
@@ -203,7 +276,7 @@ void B_LedControllerTask(void* pvParameters)
 						uint8_t newFunctionID = B_ReadCommandBody_BYTE(&command, 0);
 						if (newFunctionID >= B_LED_FUNCTION_ENUM_SIZE || newFunctionID == B_LED_FUNCTION_NONE) {
 							ESP_LOGW(ledControllerTag, "Invalid function ID received");
-							B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_ERR, commandID, "Invalid function ID");
+							B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_ERR, "Invalid function ID");
 							break;
 						}
 
@@ -212,14 +285,17 @@ void B_LedControllerTask(void* pvParameters)
 						ledState.functionSpeed = B_ReadCommandBody_WORD(&command, 1);
 						ledState.timer = 0;
 
-						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_RES, commandID, "OK");
+						B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_RES, "OK");
 						break;
 
 					default:
 						ESP_LOGW(ledControllerTag, "Invalid SET command ID received");
-						B_SendStatusReply(taskParameter->addressMap, B_TASKID_LED, command.from, B_COMMAND_OP_ERR, commandID, "Invalid SET command");
+						B_SendStatusReply(taskParameter->addressMap, &command, B_TASKID_LED, B_COMMAND_OP_ERR, "Invalid SET command");
 						break;
 				}
+
+				// Save changed state to NVS
+				B_SaveLedStateToNVS();
 			}
 
 		}
