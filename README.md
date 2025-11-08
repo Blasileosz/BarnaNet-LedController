@@ -12,6 +12,23 @@
 	- There are [docs](https://docs.espressif.com/projects/esp-idf/en/v5.5-beta1/esp32/versions.html#updating-to-stable-release) on how to upgrade manualy
 - Git needs to be configured to auto convert to CRLF (otherwise it would mess up the commits): `git config --global core.autocrlf true`
 
+## Developement in GitHub Codespaces
+- Does not handle submodules well
+	- From a submodule, you can only push to the repo that instantiated it. This means you cannot push changes in a submodule
+	- To combat this, the `devcontainer.json` file needs to define the permissions for the codespace. If you have already created the codespace, you need to recreate it after changing these permissions.
+	- However, if you have made changes in the submodule, you cannot just recreate the codespace, as it would lose your changes. There is a way to combat this:
+		1. Create a Personal Access Token (PAT) with permissions to read-write both repositories contents
+		2. In the codespace, pipe the token into a file
+		3. Authenticate to github with this token: `gh auth login --with-token < ~/path/to/tokenfile`
+			- This may fail with: `The value of the GITHUB_TOKEN environment variable is being used for authentication.`. In this case unset the variable: `unset GITHUB_TOKEN`
+		4. Check if the authentication was successful: `gh auth status`
+		5. Tell git to use the gh cli for authentication: `gh auth setup-git`, if thats not enough overwrite the default credential helper: `git config --global credential.helper "!gh auth git-credential"`
+		6. Delete the temp file containing the token
+		7. Push the changes and recreate the codespace from scratch to apply the new permissions
+- Issues I haven't solved yet:
+	- Code highlighting and code completion doesn't work in codespaces for some reason
+	- VS Code flags the repos as being unsafe directories on first boot
+
 ### Flasing and monitoring
 Windows WSL does not support USB passthrough. To get around this, a [remote serial port](https://docs.espressif.com/projects/esptool/en/latest/esp32/remote-serial-ports.html#pyserial-example-servers) needs to be created on the host machine.
 1. Download the [esptool](https://github.com/espressif/esptool) utility from either [github](https://github.com/espressif/esptool/releases) or [pip](https://pypi.org/project/esptool/)
