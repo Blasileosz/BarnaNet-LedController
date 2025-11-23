@@ -11,8 +11,14 @@
 - The version is controlled by the Dockerfile
 	- There are [docs](https://docs.espressif.com/projects/esp-idf/en/v5.5-beta1/esp32/versions.html#updating-to-stable-release) on how to upgrade manualy
 - Git needs to be configured to auto convert to CRLF (otherwise it would mess up the commits): `git config --global core.autocrlf true`
+- When pulling the repo for the first time, make sure to init and update the submodules: `git submodule update --init --recursive` or `git pull --recurse-submodules`
+	- The Library submodule often get initialized with a detached head. To fix this and bring changes back to master:
+		1. `git stash`
+		2. `git checkout master`
+		3. `git pull origin master`
+		4. `git stash pop`
 
-## Developement in GitHub Codespaces
+### Developement in GitHub Codespaces
 - Does not handle submodules well
 	- From a submodule, you can only push to the repo that instantiated it. This means you cannot push changes in a submodule
 	- To combat this, the `devcontainer.json` file needs to define the permissions for the codespace. If you have already created the codespace, you need to recreate it after changing these permissions.
@@ -25,19 +31,37 @@
 		5. Tell git to use the gh cli for authentication: `gh auth setup-git`, if thats not enough overwrite the default credential helper: `git config --global credential.helper "!gh auth git-credential"`
 		6. Delete the temp file containing the token
 		7. Push the changes and recreate the codespace from scratch to apply the new permissions
-- Issues I haven't solved yet:
-	- Code highlighting and code completion doesn't work in codespaces for some reason
-	- VS Code flags the repos as being unsafe directories on first boot
+- Code highlighting and code completion doesn't work in codespaces for some reason
+	- The main cuplrits were pylance and the cpptools extension
+	- Only the cpptools extension throws errors in the output: `uv_pipe_bind failed with ret = -13 Failed to spawn IntelliSense process: -2147467259`
+		- The -13 error code means permission denied (EACCESS)
+		- The issue ceaces to exist when I set the container user to root
+		- While being root, the `cpptools-srv` process starts correctly, but not with the regular user
+		- This binary is located in: `~/.vscode-remote/extensions/ms-vscode.cpptools-1.28.3-linux-x64/bin/`
+		- This path chain is all the way executable by the regular user and since vscode is running as the regular user, it should be able to access it
+	- Relocating the TMPDIR to another location helped with pylance but not with cpptools
+	- Relocating the `C_Cpp.intelliSenseCachePath` did not help either
+	- Codespaces might have some folders on different mount namespaces, causing permission issues??
 
-### Flasing and monitoring
+### Build
+- By default VS Code selects Unix Makefiles for configuration, which may fail the build.
+- To fix this, delete the `build` folder or `idf.py fullclean` and reconfigure with `idf.py reconfigure`
+- Then build with `idf.py build`
+
+### Flashing and monitoring
 Windows WSL does not support USB passthrough. To get around this, a [remote serial port](https://docs.espressif.com/projects/esptool/en/latest/esp32/remote-serial-ports.html#pyserial-example-servers) needs to be created on the host machine.
 1. Download the [esptool](https://github.com/espressif/esptool) utility from either [github](https://github.com/espressif/esptool/releases) or [pip](https://pypi.org/project/esptool/)
 2. Run the RFC2217 server on the host machine: `esp_rfc2217_server -v -p 4000 COM4`
 3. Flash or monitor the device `idf.py --port rfc2217://host.docker.internal:4000?ign_set_control flash`
 
+### QEMU emulation
+- [Docs](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/qemu.html)
+- To run the project in QEMU, use: `idf.py qemu`
+- Currently running in QEMU is broken due to missing implementations of some peripherals maybe
+
 ## ESP
 - [Pinout refference](https://randomnerdtutorials.com/esp32-pinout-reference-gpios/)
-- Configure config by: ```idf.py menuconfig```
+- Configure config by: `idf.py menuconfig`
 
 ## Circuit
 - [ESP32 Wroom CH340](https://www.emag.hu/esp32-wroom-ch340-dual-core-nodemcu-1-2-18/pd/D0Q9R6MBM/)

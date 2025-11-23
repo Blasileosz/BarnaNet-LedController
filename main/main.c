@@ -8,6 +8,8 @@
 
 #include <nvs_flash.h>
 
+#include "B_SECRET.h"
+
 #include "B_wifi.h"
 #include "B_time.h"
 #include "B_mqtt.h"
@@ -26,6 +28,18 @@ struct B_TCPIngressTaskParameter tcpIngressTaskParameter = { 0 };
 struct B_AlarmTaskParameter alarmTaskParameter = { 0 };
 struct B_MQTTTaskParameter mqttTaskParameter = { 0 };
 struct B_LedControllerTaskParameter ledControllerTaskParameter = { 0 };
+
+extern const uint8_t _binary_DigiCertGlobalRootG2_crt_pem_start[]	asm("_binary_DigiCertGlobalRootG2_crt_pem_start");
+extern const uint8_t _binary_DigiCertGlobalRootG2_crt_pem_end[]		asm("_binary_DigiCertGlobalRootG2_crt_pem_end");
+
+// extern const uint8_t _binary_BarnaNet_CA_crt_start[]			asm("_binary_BarnaNet_CA_crt_start");
+// extern const uint8_t _binary_BarnaNet_CA_crt_end[]				asm("_binary_BarnaNet_CA_crt_end");
+
+extern const uint8_t _binary_BB0_crt_start[]						asm("_binary_BB0_crt_start");
+extern const uint8_t _binary_BB0_crt_end[]						asm("_binary_BB0_crt_end");
+
+extern const uint8_t _binary_BB0_key_start[]						asm("_binary_BB0_key_start");
+extern const uint8_t _binary_BB0_key_end[]						asm("_binary_BB0_key_end");
 
 void app_main()
 {
@@ -46,7 +60,7 @@ void app_main()
 	ESP_LOGI(tag, "GPIO is on for pin: %i", B_BUILTIN_LED);
 
 	// Connect to WIFI
-	if (B_WifiConnect() != B_WIFI_OK) {
+	if (B_WifiConnect(B_AP_SSID, B_AP_PASS) != B_WIFI_OK) {
 		ESP_LOGE(tag, "Wifi failed");
 		return;
 	}
@@ -95,6 +109,9 @@ void app_main()
 
 	// Prepare MQTT task parameters
 	mqttTaskParameter.addressMap = &addressMap;
+	mqttTaskParameter.verificationCertificate = (uint8_t*)_binary_DigiCertGlobalRootG2_crt_pem_start;
+	mqttTaskParameter.authenticationCertificate = (uint8_t*)_binary_BB0_crt_start;
+	mqttTaskParameter.authenticationKey = (uint8_t*)_binary_BB0_key_start;
 
 	// Prepare alarm task parameters
 	alarmTaskParameter.addressMap = &addressMap;

@@ -3,13 +3,17 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
+	"remoteEnv": {
+		"TMPDIR": "${containerWorkspaceFolder}/.ipch", // Intellisense cache
+		"CMAKE_GENERATOR": "Ninja"
+	},
 	"customizations": {
 		"vscode": {
 			"settings": {
 				"terminal.integrated.defaultProfile.linux": "bash",
 				"idf.espIdfPath": "/opt/esp/idf",
 				"idf.customExtraPaths": "",
-				"idf.pythonBinPath": "/opt/esp/python_env/idf6.0_py3.12_env/bin/python",
+				"idf.pythonBinPath": "/opt/esp/python_env/idf5.5_py3.12_env/bin/python",
 				"idf.toolsPath": "/opt/esp",
 				"idf.gitPath": "/usr/bin/git"
 			},
@@ -26,7 +30,7 @@
 				"terminal.integrated.defaultProfile.linux": "bash",
 				"idf.espIdfPath": "/opt/esp/idf",
 				"idf.customExtraPaths": "",
-				"idf.pythonBinPath": "/opt/esp/python_env/idf6.0_py3.12_env/bin/python",
+				"idf.pythonBinPath": "/opt/esp/python_env/idf5.5_py3.12_env/bin/python",
 				"idf.toolsPath": "/opt/esp",
 				"idf.gitPath": "/usr/bin/git"
 			},

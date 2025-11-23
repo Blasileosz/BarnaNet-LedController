@@ -3,5 +3,8 @@ build
 .vscode/settings.json
 
 **/__pycache__
+.ipch
 
 B_SECRET.h
+certs/*
+!certs/*.md
